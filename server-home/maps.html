@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style type="text/css">
+      html, body { height: 100%; margin: 0; padding: 0; }
+      #map { height: 75%; width: 80%; margin: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="lb"><h1 align='center'>Test Google Maps API</h1></div>
+
+    <div id="map"></div>
+    <script type="text/javascript">
+
+var map;
+function initMap() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: {lat: 37.874423, lng: -122.268020},
+    zoom: 16
+  });
+
+  var infoStr1 = '<h2>(37.874423, -122.268020)</h2>'+
+      '<div>'+
+      'This location is recorded at Nov. 26, 2015 18:20 PT.' +
+      '</div>'+
+      '</div>';
+
+  var infowindow1 = new google.maps.InfoWindow({
+    content: infoStr1
+  });
+
+  var marker1 = new google.maps.Marker({
+    map: map,
+    position: {lat: 37.874423, lng: -122.268020},
+  });
+
+  marker1.addListener('click', function() {
+    infowindow1.open(map, marker1);
+  });
+
+  var marker2 = new google.maps.Marker({
+    map: map,
+    position: {lat: 37.875210, lng: -122.268471}
+  });
+
+  var infoStr2 = '<h2>(37.875210, -122.268471)</h2>'+
+      '<div>'+
+      'This location is recorded at Nov. 26, 2015 18:40 PT.' +
+      '</div>'+
+      '</div>';
+
+  var infowindow2 = new google.maps.InfoWindow({
+    content: infoStr2
+  });
+
+  marker2.addListener('click', function() {
+    infowindow2.open(map, marker2);
+  });
+
+  var marker3 = new google.maps.Marker({
+    map: map,
+    position: {lat: 37.876598, lng: -122.268814}
+  });
+
+  marker3.addListener('click', function() {
+    (new google.maps.InfoWindow({
+    content: '<h2>(37.876598, -122.268814)</h2>'+
+      '<div>'+
+      'Latest Location.' +
+      '</div>'+
+      '</div>'
+  })).open(map, marker3);
+  });
+  (new google.maps.InfoWindow({
+    content: '<h2>(37.876598, -122.268814)</h2>'+
+      '<div>'+
+      'Latest Location.' +
+      '</div>'+
+      '</div>'
+  })).open(map, marker3);
+}
+
+    </script>
+    <script async defer
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB7VayziRywaYqsE9QKaLbXEU8EOs26HiI&callback=initMap">
+    </script>
+  </body>
+</html>

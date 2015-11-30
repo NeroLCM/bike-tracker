@@ -144,12 +144,12 @@ void updateFix() {
 }
 
 void updateAll() {
+  updateFix();
   updateUTC();
   updateLat();
   updateLatd();
   updateLon();
   updateLond();
-  updateFix();
 }
 
 void serial_print_data() {
