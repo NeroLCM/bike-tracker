@@ -1,0 +1,24 @@
+}
+
+function addMarker(lat_in, lon_in, utc_str, pop) {
+  var info = '<h2>(' + lat_in.toString() + ', ' + lon_in.toString() + ')</h2>' +
+         '<div>This location is recorded at ' + utc_str + '</div>';
+  var infowindow = new google.maps.InfoWindow({content: info});
+  var LatLon = new google.maps.LatLng(parseFloat(lat_in), parseFloat(lon_in));
+  var marker = new google.maps.Marker({
+  map: map, 
+  position: LatLon,
+  });
+  marker.addListener('click', function() {
+  infowindow.open(map, marker);
+  });
+  if (pop) {
+  infowindow.open(map, marker);
+}
+}
+
+</script>
+<script async defer
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB7VayziRywaYqsE9QKaLbXEU8EOs26HiI&callback=initMap">
+</script>
+</body> </html>

@@ -1,0 +1,3 @@
+ErrorDocument 401 /ee149/401.shtml
+ErrorDocument 403 /ee149/404.shtml
+ErrorDocument 404 /ee149/404.shtml

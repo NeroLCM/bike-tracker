@@ -18,71 +18,25 @@ function initMap() {
     center: {lat: 37.874423, lng: -122.268020},
     zoom: 16
   });
-
-  var infoStr1 = '<h2>(37.874423, -122.268020)</h2>'+
-      '<div>'+
-      'This location is recorded at Nov. 26, 2015 18:20 PT.' +
-      '</div>'+
-      '</div>';
-
-  var infowindow1 = new google.maps.InfoWindow({
-    content: infoStr1
-  });
-
-  var marker1 = new google.maps.Marker({
-    map: map,
-    position: {lat: 37.874423, lng: -122.268020},
-  });
-
-  marker1.addListener('click', function() {
-    infowindow1.open(map, marker1);
-  });
-
-  var marker2 = new google.maps.Marker({
-    map: map,
-    position: {lat: 37.875210, lng: -122.268471}
-  });
-
-  var infoStr2 = '<h2>(37.875210, -122.268471)</h2>'+
-      '<div>'+
-      'This location is recorded at Nov. 26, 2015 18:40 PT.' +
-      '</div>'+
-      '</div>';
-
-  var infowindow2 = new google.maps.InfoWindow({
-    content: infoStr2
-  });
-
-  marker2.addListener('click', function() {
-    infowindow2.open(map, marker2);
-  });
-
-  var marker3 = new google.maps.Marker({
-    map: map,
-    position: {lat: 37.876598, lng: -122.268814}
-  });
-
-  marker3.addListener('click', function() {
-    (new google.maps.InfoWindow({
-    content: '<h2>(37.876598, -122.268814)</h2>'+
-      '<div>'+
-      'Latest Location.' +
-      '</div>'+
-      '</div>'
-  })).open(map, marker3);
-  });
-  (new google.maps.InfoWindow({
-    content: '<h2>(37.876598, -122.268814)</h2>'+
-      '<div>'+
-      'Latest Location.' +
-      '</div>'+
-      '</div>'
-  })).open(map, marker3);
+  addMarker(37.874423, -122.268020, '18:20');addMarker(37.875210, -122.268471, '18:40');addMarker(37.876598, -122.268814, '19:00');
+  
 }
 
-    </script>
-    <script async defer
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB7VayziRywaYqsE9QKaLbXEU8EOs26HiI&callback=initMap">
-    </script>
-  </body>
-</html>
+function addMarker(lat_in, lon_in, utc_str) {
+  var info = '<h2>(' + lat_in.toString() + ', ' + lon_in.toString() + ')</h2>' +
+         '<div>This location is recorded at ' + utc_str + '</div>';
+  var infowindow = new google.maps.InfoWindow({content: info});
+  var LatLon = new google.maps.LatLng(parseFloat(lat_in), parseFloat(lon_in));
+  var marker = new google.maps.Marker({
+  map: map, 
+  position: LatLon,
+  });
+  marker.addListener('click', function() {
+  infowindow.open(map, marker);
+  });
+}
+
+</script>
+<script async defer
+  src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB7VayziRywaYqsE9QKaLbXEU8EOs26HiI&callback=initMap">
+</script>
