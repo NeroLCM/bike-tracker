@@ -10,7 +10,29 @@ if (!isset($_GET['lat']) || !isset($_GET['lon']) || !isset($_GET['utc'])) {
     exit;
 }
 
-$fhandle = fopen('data.csv', 'a');
+// Resolve timing
+$result = "";
+$utc_hms = $_GET['utc'];
+$utc_hh = (int) (substr($utc_hms, 0, 2));
+$curr_hh = (int) (date('H'));
+
+$diff = $curr_hh - $utc_hh;
+if ($diff >= 0 && $diff <= 12) {
+    $result = $result . date('m-d-Y');
+    $result = $result . ' ' . substr($utc_hms, 0, 2) . ':' .
+              substr($utc_hms, 2, 2) . ':' . substr($utc_hms, 4, 2);
+    $result = $result . ' ' . date('T');
+} else {
+    $result = $result . date('m') . '-';
+    $result = $result . (string)(((int) date('d')) - 1) . '-';
+    $result = $result . date('Y');
+    $result = $result . ' ' . substr($utc_hms, 0, 2) . ':' .
+              substr($utc_hms, 2, 2) . ':' . substr($utc_hms, 4, 2);
+    $result = $result . ' ' . date('T');
+}
+
+echo $result;
+//$fhandle = fopen('data.csv', 'a');
 
 
 
