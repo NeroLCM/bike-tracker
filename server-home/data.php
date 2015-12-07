@@ -31,9 +31,14 @@ if ($diff >= 0 && $diff <= 12) {
     $result = $result . ' ' . date('T');
 }
 
-echo $result;
-//$fhandle = fopen('data.csv', 'a');
-
-
-
+$fhandle = fopen('data.csv', 'a');
+fwrite(
+    $fhandle, 
+    $_GET['lat'] . ',' .
+    $_GET['lon'] . ',' .
+    $result . "\n"
+);
+fclose($fhandle);
+echo "OK &nbsp;";
+echo $_GET['lat'], $_GET['lon'], $result
 ?>
