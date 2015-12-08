@@ -185,6 +185,7 @@ void setup() {
   delay(1000);
   Serial.begin(115200);
   delay(1000);
+  Serial.println(sizeof(float));
   //turn on GPS power supply
   Serial.println("AT+CGPSPWR=1");
   delay(1000);
