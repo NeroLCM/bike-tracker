@@ -10,7 +10,7 @@
  *  time for the internal watchdog timer. Therefore we want to sleep 225
  *  times (~30 min) before we really wake up.
  */
-#define SLEEP_TIMES 2
+#define SLEEP_TIMES 220
 volatile int wd_count=0;
 
 ISR(WDT_vect){
@@ -52,6 +52,7 @@ int send_at_command_and_select(char* command, char* opt1, char* opt2, int timeou
   memset(res, '\0', 150);
   delay(100);
   while (Serial.available() > 0) Serial.read(); // flush the input buffer
+  Serial.println(command);
   time_stamp = millis();
   while (millis() - time_stamp < timeout) {
     if (Serial.available() > 0) {
@@ -235,8 +236,13 @@ void updateAllGPSData() {
 int wait_for_GSM_registration(unsigned long timeout) {
   unsigned long time_stamp = millis() + timeout;
   while (millis() < time_stamp && 
-    (send_at_command_and_select("AT+CREG?", "+CREG: 0,1", "+CREG: 0,5", 3000) == 0));
-  if (send_at_command_and_select("AT+CREG?", "+CREG: 0,1", "+CREG: 0,5", 3000) != 0) {
+      send_at_command_and_select("AT+CREG?", "+CREG: 1,1", "+CREG: 1,5", 3000) == 0 &&
+      send_at_command_and_select("AT+CREG?", "+CREG: 0,1", "+CREG: 0,5", 3000) == 0
+    );
+  if (
+    send_at_command_and_select("AT+CREG?", "+CREG: 1,1", "+CREG: 1,5", 3000) != 0 ||
+    send_at_command_and_select("AT+CREG?", "+CREG: 0,1", "+CREG: 0,5", 3000) != 0
+  ) {
     return 0;
   }
   return 1;
@@ -245,7 +251,8 @@ int wait_for_GSM_registration(unsigned long timeout) {
 void setup_GPRS_param() {
   send_at_command_and_validate("AT+SAPBR=3,1,\"Contype\",\"GPRS\"", "OK", 3000);
   send_at_command_and_validate("AT+SAPBR=3,1,\"APN\",\"phone\"", "OK", 3000);
-  while (send_at_command_and_validate("AT+SAPBR=1,1", "OK", 20000) == 0) delay(4000);
+  int i = 0;
+  while (send_at_command_and_validate("AT+SAPBR=1,1", "OK", 20000) == 0 && i++ < 3) delay(1000);
 }
 //////////// END code for GSM/GPRS registration ////////////
 
@@ -268,6 +275,7 @@ void setup_GPRS_param() {
  * Base Addr. 0x0     | curr mode
  *            0x1-    | GPS blocks
  *            ......
+ *            0x3FF   | numBlocks
  */
 
 void write_GPS_data_to_EEPROM(float lat, float lon, char* utc, char fix, int offset) {
@@ -298,20 +306,238 @@ void read_GPS_data_to_global_var(int offset) {
 }
 /////////// END code for EEPROM read/write ////////////
 
+/////////// code for HTTP requests ////////////
+#define ERR_ACTIONSETTINGS 2
+#define ERR_URLSETTINGS 3
+#define ERR_REQUEST 4
+#define ERR_READDATA 1000
+/*
+* Sends an http request, pulls the respond to buffer
+* and returns the respond code
+*/
+int send_http_get_request(char *url, char *buf) {
+  int res;
+  Serial.println("AT+HTTPINIT");
+  res = send_at_command_and_validate("AT+HTTPPARA=\"CID\",1", "OK", 4000);
+  if (res != 1) return ERR_ACTIONSETTINGS;
+  char cmd_str[200];
+  memset(cmd_str, '\0', 200);
+  sprintf(cmd_str, "AT+HTTPPARA=\"URL\",\"%s\"", url);
+  res = send_at_command_and_validate(cmd_str, "OK", 4000);
+  if (res != 1) return ERR_URLSETTINGS;
+  res = send_at_command_and_validate("AT+HTTPACTION=0", "+HTTPACTION:0,", 10000);
+  if (res != 1) return ERR_REQUEST;
+  while (Serial.available() < 4);
+  // reads the respond code from buffer, reuse cmd_str space
+  char tmp;
+  res = 0;
+  while (Serial.available() == 0);
+  tmp = Serial.read();
+  while (tmp != ',') {
+    res = res * 10 + (tmp - 0x30);
+    while (Serial.available() == 0);
+    tmp = Serial.read();
+  }
+  // 200 - HTTP OK, get the first 100 bytes of data
+  int i;
+  i = send_at_command_and_select("AT+HTTPREAD=0,100", "+HTTPREAD:", "ERROR", 5000);
+  buf[0] = '\0';
+  if (i == 0) {
+    Serial.println("AT+HTTPTERM");
+    return res;
+  } else if (i == 2) {
+    Serial.println("AT+HTTPTERM");
+    return res + ERR_READDATA;
+  }
+  int data_size = 0;
+  while (Serial.available() == 0);
+  tmp = Serial.read();
+  while (tmp != 0x0D) {
+    data_size = data_size * 10 + (tmp - 0x30);
+    while (Serial.available() == 0);
+    tmp = Serial.read();
+  }
+  i = 0;
+  while (i < data_size+1) {
+    if (Serial.available() > 0) {
+      buf[i] = Serial.read();
+      i++;
+    }
+  }
+  buf[i] = '\0';
+  send_at_command_and_validate("AT+HTTPTERM", "OK", 3000);
+  return res;
+}
+
+/////////// END code for HTTP requests ////////////
+
+#define HOME "lcm.im/ee149/index.php?token=598234c470cd87148cd26090f83ac4e6"
+#define TESTDATA "lcm.im/ee149/data.php?lat=37.773246&lon=-122.158217&utc=171001"
+
+////////// State Machine Control /////////
+enum ctrl_state {
+  STARTUP = 0,
+  SLEEP_STANDBY = 1,
+  DEEP_SLEEP = 2,
+  NORMAL = 3,
+  TRACKING = 4,
+  RESUME = 5
+};
+
+enum ctrl_state state;
+const int GSM_MODE_PIN = 2;
+const int GPS_MODE_PIN = 3;
+const int SLEEP_CTRL_PIN = 8;
+const int ERR_LED_INDICATOR = 10;
+const int BAT_VOLTAGE_PIN = 5;
+
+const int GSM_MODE = 0;
+const int GPS_MODE = 1;
+void switch_mode(int mode) {
+  if (mode == GPS_MODE) {
+    digitalWrite(GSM_MODE_PIN, LOW);
+    digitalWrite(GPS_MODE_PIN, HIGH);
+  } else {
+    digitalWrite(GSM_MODE_PIN, HIGH);
+    digitalWrite(GPS_MODE_PIN, LOW);
+  }
+}
+/////////////////////////////////////////
+
+
 void setup() {
-  // put your setup code here, to run once:
-  pinMode(6, OUTPUT);
-  digitalWrite(6, HIGH);
-  delay(1000);
-  digitalWrite(6, 0);
+  pinMode(SLEEP_CTRL_PIN, OUTPUT);
+  pinMode(ERR_LED_INDICATOR, OUTPUT);
+  digitalWrite(SLEEP_CTRL_PIN, LOW);
+  digitalWrite(ERR_LED_INDICATOR, LOW);
+  state = STARTUP;
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  if (wd_count > 0) {
-    digitalWrite(6, 1);
+  if (state == STARTUP) {
+    Serial.begin(115200);
+    while (send_at_command_and_validate("AT", "OK", 1000) == 0);
+    Serial.println("AT+CGPSPWR=1"); // turn on GPS
+    Serial.println("AT+CGPSRST=0"); // cold start GPS
+    wait_for_GSM_registration(60000);
+    delay(10);
+    setup_GPRS_param();
+    state = NORMAL;
+  } else if (state == RESUME) {
+    digitalWrite(SLEEP_CTRL_PIN, LOW);
     delay(1000);
-    digitalWrite(6, 0);
-  }
+    Serial.println("AT+CSCLK=0");
+    Serial.println("AT+CGPSRST=1"); // hot start GPS
+    state = NORMAL;
+  } else if (state == SLEEP_STANDBY) {
+    if (analogRead(BAT_VOLTAGE_PIN) < 770) {
+      state = DEEP_SLEEP;
+      return;
+    }
+    Serial.println("AT+CGPSPWR=0");
     enter_power_saving_mode();
+    state = RESUME;
+  } else if (state == DEEP_SLEEP) {
+    Serial.println("AT+CGPSPWR=0");
+    Serial.println("AT+CSCLK=1");
+    digitalWrite(SLEEP_CTRL_PIN, HIGH);
+    enter_power_saving_mode();
+    state = RESUME;
+  } else if (state == TRACKING) {
+    Serial.println("AT+CGPSPWR=1"); // turn on GPS
+    wait_for_GSM_registration(60000);
+    delay(10);
+    char url_str[180];
+    char buf[105] = {0};
+    strcpy(url_str, "lcm.im/ee149/index.php?token=598234c470cd87148cd26090f83ac4e6");
+    send_http_get_request(url_str, buf);
+    if (buf[0] != 'T') { // NORMAL MODE
+      state = NORMAL;
+      return;
+    }
+    unsigned long time_limit = millis() + 360000; // alloc 6 min for fix
+    char ret = 0;
+    while (millis() < time_limit) {
+      if (
+        send_at_command_and_select(
+          "AT+CGPSSTATUS?",
+          "+CGPSSTATUS: Location 2D Fix",
+          "+CGPSSTATUS: Location 3D Fix",
+          3000
+        ) != 0
+      ) {
+        ret = 1;
+        break;
+      }
+    }
+    if (ret == 0) {
+      return; // retry, but check if it should still be in tracking mode first
+    }
+    switch_mode(GPS_MODE);
+    delay(100);
+    updateAllGPSData();
+    switch_mode(GSM_MODE);
+    delay(100);
+    memset(url_str, '\0', 180);
+    memset(buf, '\0', 105);
+    sprintf(url_str, "lcm.im/ee149/data.php?lat=%f&lon=%f&utc=%s", lat, lon, UTC);
+    send_http_get_request(url_str, buf);
+    delay(5000);
+    return; // retry, but check if it should still be in tracking mode first
+  } else if (state == NORMAL) {
+    Serial.println("AT+CGPSPWR=1"); // turn on GPS
+    wait_for_GSM_registration(60000);
+    delay(10);
+    char url_str[180];
+    char buf[105] = {0};
+    strcpy(url_str, "lcm.im/ee149/index.php?token=598234c470cd87148cd26090f83ac4e6");
+    send_http_get_request(url_str, buf);
+    if (buf[0] == 'T') { // TRACKING MODE
+      state = TRACKING;
+      return;
+    }
+    unsigned long time_limit = millis() + 180000; // alloc 3 min for fix
+    char ret = 0;
+    while (millis() < time_limit) {
+      if (
+        send_at_command_and_select(
+          "AT+CGPSSTATUS?",
+          "+CGPSSTATUS: Location 2D Fix",
+          "+CGPSSTATUS: Location 3D Fix",
+          3000
+        ) != 0
+      ) {
+        ret = 1;
+        break;
+      }
+    }
+    if (ret == 0) { // Fix failed, go to sleep
+      state = SLEEP_STANDBY;
+    } else {
+      // switch to GPS mode
+      switch_mode(GPS_MODE);
+      delay(100);
+      updateAllGPSData();
+      switch_mode(GSM_MODE);
+      delay(100);
+      memset(url_str, '\0', 180);
+      memset(buf, '\0', 105);
+      sprintf(url_str, "lcm.im/ee149/data.php?lat=%f&lon=%f&utc=%s", lat, lon, UTC);
+      send_http_get_request(url_str, buf);
+      if (buf[0] == 'O' and buf[1] == 'K') { // OK!
+        state = SLEEP_STANDBY;
+        return;
+      } else {
+        char num_pending_block = EEPROM.read(0x3FF);
+        EEPROM.write(0x3FF, num_pending_block + 1);
+        int offset = 1 + 24 * num_pending_block;
+        write_GPS_data_to_EEPROM(lat, lon, UTC, fix, offset);
+        state = SLEEP_STANDBY;
+        return;
+      }
+    }
+  } else {
+    Serial.println("INVALID STATE");
+    digitalWrite(ERR_LED_INDICATOR, HIGH);
+  }
 }
