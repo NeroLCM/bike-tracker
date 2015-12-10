@@ -13,7 +13,29 @@ $token = $_GET['token'];
     exit;
 }*/
 if ($token == '598234c470cd87148cd26090f83ac4e6') {
-    echo '$ACK';
+    $ts = fopen('timestamp', 'w');
+    fwrite($ts, time());
+    fclose($ts);
+
+    if (isset($_GET["bat"])) {
+        $bat = fopen('bat', 'w');
+        fwrite($bat, $_GET["bat"]);
+        fclose($bat);
+    }
+    
+    $fhandle = fopen('staterc', 'r');
+    $state = fread($fhandle, 1);
+    fclose($fhandle);
+    if ($state == "A") {
+        echo "ACK";
+    } else if ($state == "T") {
+        echo "TRACKING";
+    } else {
+        $fhandle = fopen('state', 'w');
+        fwrite($fhandle, "A");
+        fclose($fhandle);
+        echo "ACK";
+    }
     exit;
 } else { // Test Mode
     // get points

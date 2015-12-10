@@ -395,15 +395,26 @@ const int GSM_MODE = 0;
 const int GPS_MODE = 1;
 void switch_mode(int mode) {
   if (mode == GPS_MODE) {
-    digitalWrite(GSM_MODE_PIN, LOW);
-    digitalWrite(GPS_MODE_PIN, HIGH);
-  } else {
     digitalWrite(GSM_MODE_PIN, HIGH);
     digitalWrite(GPS_MODE_PIN, LOW);
+  } else {
+    digitalWrite(GSM_MODE_PIN, LOW);
+    digitalWrite(GPS_MODE_PIN, HIGH);
   }
 }
 /////////////////////////////////////////
 
+////////////// Power Management /////////
+int bat_level = 0; // battery percentage
+
+void updateBatLevel() {
+  int raw_data = analogRead(BAT_VOLTAGE_PIN);
+  // 0.0049V per unit, 7.4v -> 0, 8.4v -> 100
+  float volt = raw_data * 0.0049;
+  bat_level = (int) ((volt - 7.4) * 100);
+}
+
+/////////////////////////////////////////
 
 void setup() {
   pinMode(SLEEP_CTRL_PIN, OUTPUT);
@@ -414,8 +425,10 @@ void setup() {
 }
 
 void loop() {
+  updateBatLevel();
   if (state == STARTUP) {
     Serial.begin(115200);
+    switch_mode(GSM_MODE);
     while (send_at_command_and_validate("AT", "OK", 1000) == 0);
     Serial.println("AT+CGPSPWR=1"); // turn on GPS
     Serial.println("AT+CGPSRST=0"); // cold start GPS
@@ -424,13 +437,14 @@ void loop() {
     setup_GPRS_param();
     state = NORMAL;
   } else if (state == RESUME) {
+    switch_mode(GSM_MODE);
     digitalWrite(SLEEP_CTRL_PIN, LOW);
     delay(1000);
     Serial.println("AT+CSCLK=0");
     Serial.println("AT+CGPSRST=1"); // hot start GPS
     state = NORMAL;
   } else if (state == SLEEP_STANDBY) {
-    if (analogRead(BAT_VOLTAGE_PIN) < 770) {
+    if (bat_level < 30) {
       state = DEEP_SLEEP;
       return;
     }
@@ -444,12 +458,17 @@ void loop() {
     enter_power_saving_mode();
     state = RESUME;
   } else if (state == TRACKING) {
+    switch_mode(GSM_MODE);
     Serial.println("AT+CGPSPWR=1"); // turn on GPS
     wait_for_GSM_registration(60000);
     delay(10);
     char url_str[180];
     char buf[105] = {0};
-    strcpy(url_str, "lcm.im/ee149/index.php?token=598234c470cd87148cd26090f83ac4e6");
+    sprintf(
+      url_str, 
+      "lcm.im/ee149/index.php?token=598234c470cd87148cd26090f83ac4e6&bat=%d",
+      bat_level
+    );
     send_http_get_request(url_str, buf);
     if (buf[0] != 'T') { // NORMAL MODE
       state = NORMAL;
@@ -485,12 +504,17 @@ void loop() {
     delay(5000);
     return; // retry, but check if it should still be in tracking mode first
   } else if (state == NORMAL) {
+    switch_mode(GSM_MODE);
     Serial.println("AT+CGPSPWR=1"); // turn on GPS
     wait_for_GSM_registration(60000);
     delay(10);
     char url_str[180];
     char buf[105] = {0};
-    strcpy(url_str, "lcm.im/ee149/index.php?token=598234c470cd87148cd26090f83ac4e6");
+    sprintf(
+      url_str, 
+      "lcm.im/ee149/index.php?token=598234c470cd87148cd26090f83ac4e6&bat=%d",
+      bat_level
+    );
     send_http_get_request(url_str, buf);
     if (buf[0] == 'T') { // TRACKING MODE
       state = TRACKING;
